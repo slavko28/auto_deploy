@@ -1,4 +1,4 @@
-name: CI/CD Remote Deploy
+name: CI/CD Deploy to Raspberry Pi
 
 on:
   push:
@@ -17,14 +17,15 @@ jobs:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:ci
+          hostname: github-actions-deployer
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: 100.90.77.31
           username: deployer
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/auto_deploy
-            git pull origin main
-            # docker compose up -d --build
+            git fetch origin main
+            git reset --hard origin/main
