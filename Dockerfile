@@ -1,8 +1,7 @@
-FROM eclipse-temurin:17-jre-alpine
+FROM amazoncorretto:17-al2-jdk
 
 WORKDIR /app
-
-COPY target/*.jar app.jar
+COPY *.jar app.jar
 EXPOSE 8080
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
