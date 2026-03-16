@@ -5,7 +5,7 @@ on:
     branches: [ main, dev_deploy ]
 
 env:
-  IMAGE_NAME: my-java-app
+  IMAGE_NAME: my_demo_app
   PROJECT_NAME: auto_deploy
 
 jobs:
@@ -26,16 +26,11 @@ jobs:
         run: mvn clean package -DskipTests
 
       - name: Connect Tailscale
-        uses: tailscale/github-action@v2
+        uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
 
       - name: Copy artifacts to Pi
         run: |
@@ -62,7 +57,7 @@ jobs:
               --restart unless-stopped \
               -p 8080:8080 \
               $IMAGE_NAME:latest
-
+            
             sleep 3
             docker ps | grep $IMAGE_NAME
             docker image prune -f
