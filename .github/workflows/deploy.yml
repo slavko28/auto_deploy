@@ -64,7 +64,7 @@ jobs:
               --restart unless-stopped \
               -p 8080:8080 \
               $IMAGE_NAME:latest
-
+            
             sleep 3
             docker ps | grep $IMAGE_NAME
             docker image prune -f
