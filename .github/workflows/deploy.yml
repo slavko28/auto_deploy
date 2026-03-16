@@ -2,10 +2,11 @@ name: Build & Deploy to Raspberry Pi
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev_deploy ]
 
 env:
   IMAGE_NAME: my-java-app
+  PROJECT_NAME: auto_deploy
 
 jobs:
   build-and-deploy:
@@ -15,57 +16,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Build JAR ──────────────────────────────────────────
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
 
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      # ── Build Docker Image ─────────────────────────────────
-      - name: Build Docker image
-        run: |
-          docker build -t $IMAGE_NAME:latest .
-          docker save $IMAGE_NAME:latest | gzip > app-image.tar.gz
-
-      # ── Connect to Tailscale ───────────────────────────────
       - name: Connect Tailscale
         uses: tailscale/github-action@v2
         with:
           authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
-          args: "--accept-routes"
 
-      # ── Deploy to Raspberry Pi ─────────────────────────────
-      - name: Copy image to Pi
+      - name: Setup SSH key
         run: |
-          scp -o StrictHostKeyChecking=no \
-              -i <(echo "${{ secrets.DEPLOY_SSH_KEY }}") \
-              app-image.tar.gz \
-              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/${{ secrets.DEPLOY_USER }}/auto_deploy/
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Deploy on Pi
+      - name: Copy artifacts to Pi
         run: |
-          ssh -o StrictHostKeyChecking=no \
-              -i <(echo "${{ secrets.DEPLOY_SSH_KEY }}") \
-              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+          scp -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              target/*.jar \
+              Dockerfile \
+              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/$PROJECT_NAME/
+
+      - name: Build and deploy on Pi
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -T \
+              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << EOF
             set -e
-            
-            docker load < ~/app-image.tar.gz
-            
-            docker stop my-java-app 2>/dev/null || true
-            docker rm   my-java-app 2>/dev/null || true
-            
+            cd ~/$PROJECT_NAME
+
+            docker build -t $IMAGE_NAME:latest .
+            docker stop $IMAGE_NAME 2>/dev/null || true
+            docker rm   $IMAGE_NAME 2>/dev/null || true
             docker run -d \
-              --name my-java-app \
+              --name $IMAGE_NAME \
               --restart unless-stopped \
               -p 8080:8080 \
-              my-java-app:latest
-            
+              $IMAGE_NAME:latest
+
             sleep 3
-            docker ps | grep my-java-app
-            
+            docker ps | grep $IMAGE_NAME
             docker image prune -f
           EOF
